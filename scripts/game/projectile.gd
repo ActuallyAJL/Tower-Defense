@@ -3,15 +3,30 @@ class_name Projectile
 
 const SPEED  := 220.0
 const RADIUS := 5.0
-const COLOR  := Color(1.0, 0.85, 0.1)
+const COLOR  := Color(1.0, 0.90, 0.20)
 
-var _target : Enemy
-var _damage : float
+var _target       : Enemy
+var _damage       : float
+var _pierce_armor : bool
+var _aoe_radius   : float
+var _slow_amount  : float
+var _slow_duration: float
 
 
-func setup(target: Enemy, damage: float) -> void:
-	_target = target
-	_damage = damage
+func setup(
+	target       : Enemy,
+	damage       : float,
+	pierce_armor : bool  = false,
+	aoe_radius   : float = 0.0,
+	slow_amount  : float = 0.0,
+	slow_duration: float = 0.0
+) -> void:
+	_target        = target
+	_damage        = damage
+	_pierce_armor  = pierce_armor
+	_aoe_radius    = aoe_radius
+	_slow_amount   = slow_amount
+	_slow_duration = slow_duration
 
 
 func _process(delta: float) -> void:
@@ -19,13 +34,30 @@ func _process(delta: float) -> void:
 		queue_free()
 		return
 	var to_target := _target.position - position
-	# Close enough to register a hit.
 	if to_target.length() <= RADIUS + SPEED * delta:
-		_target.take_damage(_damage)
-		queue_free()
+		_on_impact()
 		return
 	position += to_target.normalized() * SPEED * delta
 	queue_redraw()
+
+
+func _on_impact() -> void:
+	var impact_pos := position
+
+	# Primary hit
+	if is_instance_valid(_target):
+		_target.take_damage(_damage, _pierce_armor)
+		if _slow_amount > 0.0 and is_instance_valid(_target):
+			_target.apply_slow(_slow_amount, _slow_duration)
+
+	# AoE splash
+	if _aoe_radius > 0.0:
+		for child in get_parent().get_children():
+			if child is Enemy and child != _target:
+				if impact_pos.distance_to(child.position) <= _aoe_radius:
+					child.take_damage(_damage, _pierce_armor)
+
+	queue_free()
 
 
 func _draw() -> void:

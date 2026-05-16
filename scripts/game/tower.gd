@@ -1,18 +1,17 @@
 extends Node2D
 class_name Tower
 
-const SIZE    := Vector2(36.0, 36.0)
-const COLOR   := Color(0.3, 0.5, 0.85)
+const BODY_SIZE    := Vector2(36.0, 36.0)
+const BARREL_LEN   := 22.0   # pixels from centre to barrel tip
+const BARREL_WIDTH := 4.0
 
-@export var damage    : float = 25.0
-@export var range_px  : float = 160.0
-@export var fire_rate : float = 1.0   # shots per second
+var data: TowerData
 
-# Set by the spawner so the tower can scan for enemies.
 var enemies_parent: Node = null
 
-var _cooldown : float = 0.0
-var _target   : Enemy = null
+var _cooldown     : float = 0.0
+var _target       : Enemy = null
+var _barrel_angle : float = 0.0
 
 
 func _ready() -> void:
@@ -27,18 +26,16 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(_target):
 		return
 	_fire()
-	_cooldown = 1.0 / fire_rate
+	_cooldown = 1.0 / data.fire_rate
 
 
 func _acquire_target() -> void:
-	# Keep the current target if it's still alive and in range.
-	if is_instance_valid(_target) and position.distance_to(_target.position) <= range_px:
+	if is_instance_valid(_target) and position.distance_to(_target.position) <= data.range_px:
 		return
 	_target = null
 	if enemies_parent == null:
 		return
-	# Pick the closest enemy within range.
-	var best_dist := range_px + 1.0
+	var best_dist := data.range_px + 1.0
 	for child in enemies_parent.get_children():
 		if child is Enemy:
 			var d := position.distance_to(child.position)
@@ -48,15 +45,35 @@ func _acquire_target() -> void:
 
 
 func _fire() -> void:
+	_barrel_angle = position.direction_to(_target.position).angle()
+	queue_redraw()
+
 	var proj := Projectile.new()
 	proj.position = position
-	proj.setup(_target, damage)
-	# Add to the same parent so coordinates match.
+	proj.setup(
+		_target,
+		data.damage,
+		data.pierce_armor,
+		data.aoe_radius,
+		data.slow_amount,
+		data.slow_duration
+	)
 	get_parent().add_child(proj)
 
 
 func _draw() -> void:
-	var half := SIZE / 2.0
-	draw_rect(Rect2(-half, SIZE), COLOR)
-	# Subtle range indicator.
-	draw_arc(Vector2.ZERO, range_px, 0.0, TAU, 64, Color(COLOR, 0.15))
+	if data == null:
+		return
+	var half := BODY_SIZE / 2.0
+
+	# Base plate (slightly larger, darker)
+	draw_rect(Rect2(-half - Vector2(2, 2), BODY_SIZE + Vector2(4, 4)), data.color.darkened(0.35))
+	# Body
+	draw_rect(Rect2(-half, BODY_SIZE), data.color)
+
+	# Barrel
+	var barrel_tip := Vector2(BARREL_LEN, 0.0).rotated(_barrel_angle)
+	draw_line(Vector2.ZERO, barrel_tip, data.color.darkened(0.45), BARREL_WIDTH)
+
+	# Range circle (faint)
+	draw_arc(Vector2.ZERO, data.range_px, 0.0, TAU, 64, Color(data.color, 0.12))
