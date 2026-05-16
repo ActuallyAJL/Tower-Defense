@@ -1,0 +1,14 @@
+# Godot import cache — regenerated locally, never commit
+.godot/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Export artifacts
+export/
+*.apk
+*.ipa
+*.exe
+*.dmg
+*.zip
