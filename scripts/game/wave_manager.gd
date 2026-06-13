@@ -5,72 +5,32 @@ signal wave_started(wave_num: int)
 signal wave_completed(wave_num: int)
 signal all_waves_completed
 
-# Set by main.gd after path generation.
+## Set by main.gd after path generation.
 var waypoints      : Array[Vector2] = []
 var entities_parent: Node = null
 
-var _spawn_queue : Array = []   # each entry: [EnemyData.Type, delay_seconds]
+## Flat spawn queue for the active wave.
+## Each entry: { "data": EnemyData, "delay": float, "hp_mult": float }
+var _spawn_queue : Array = []
 var _spawn_timer : float = 0.0
 var _alive_count : int   = 0
 var _wave_active : bool  = false
 
-# Shorthand aliases used in WAVES to keep lines short.
-const B := EnemyData.Type.BASIC
-const F := EnemyData.Type.FAST
-const T := EnemyData.Type.TANK
-const S := EnemyData.Type.SWARM
-
-# Each wave is a flat ordered list of [EnemyData.Type, delay_before_spawn].
-# The first entry always has delay 0.0 (spawns immediately when the wave starts).
-const WAVES: Array = [
-	# Wave 1 — 6× Basic
-	[[B,0.0],[B,1.2],[B,1.2],[B,1.2],[B,1.2],[B,1.2]],
-	# Wave 2 — 8× Basic + 4× Fast interleaved
-	[[B,0.0],[F,1.0],[B,0.7],[F,1.0],[B,0.7],[F,1.0],[B,0.7],[F,1.0],
-	 [B,0.7],[B,1.0],[B,1.0],[B,1.0]],
-	# Wave 3 — 6× Basic + 6× Fast + 1× Tank
-	[[B,0.0],[B,1.0],[F,0.7],[B,0.7],[F,0.7],[B,0.7],[F,0.7],[B,0.7],
-	 [F,0.7],[F,0.7],[F,0.7],[B,0.8],[B,0.8],[T,2.0]],
-	# Wave 4 — 12× Fast + 3× Tank
-	[[F,0.0],[F,0.6],[F,0.6],[T,1.5],[F,0.6],[F,0.6],[F,0.6],[T,1.5],
-	 [F,0.6],[F,0.6],[F,0.6],[F,0.6],[F,0.6],[F,0.6],[T,2.0]],
-	# Wave 5 — 20× Swarm + 4× Basic
-	[[S,0.0],[S,0.35],[S,0.35],[S,0.35],[B,0.8],[S,0.35],[S,0.35],[S,0.35],
-	 [S,0.35],[B,0.8],[S,0.35],[S,0.35],[S,0.35],[S,0.35],[B,0.8],[S,0.35],
-	 [S,0.35],[S,0.35],[S,0.35],[S,0.35],[S,0.35],[S,0.35],[S,0.35],[B,1.0]],
-	# Wave 6 — 6× Tank + 10× Fast + 15× Swarm
-	[[S,0.0],[S,0.35],[S,0.35],[F,0.6],[S,0.35],[T,1.5],[F,0.6],[S,0.35],
-	 [F,0.6],[T,1.5],[S,0.35],[S,0.35],[F,0.6],[T,1.5],[F,0.6],[S,0.35],
-	 [S,0.35],[F,0.6],[T,1.5],[F,0.6],[S,0.35],[T,1.5],[F,0.6],[S,0.35],
-	 [F,0.6],[S,0.35],[F,0.6],[S,0.35],[S,0.35],[T,2.0],[T,2.0]],
-	# Wave 7 — 12× Fast + 6× Tank + 25× Swarm
-	[[S,0.0],[S,0.3],[S,0.3],[F,0.5],[S,0.3],[F,0.5],[T,1.2],[S,0.3],
-	 [F,0.5],[S,0.3],[F,0.5],[T,1.2],[S,0.3],[S,0.3],[F,0.5],[S,0.3],
-	 [T,1.2],[F,0.5],[S,0.3],[S,0.3],[F,0.5],[T,1.2],[S,0.3],[F,0.5],
-	 [S,0.3],[T,1.2],[F,0.5],[S,0.3],[S,0.3],[F,0.5],[T,1.2],[F,0.5],
-	 [S,0.3],[S,0.3],[F,0.5],[S,0.3],[S,0.3],[S,0.3],[F,0.5],[S,0.3],
-	 [S,0.3],[S,0.3],[F,0.5]],
-	# Wave 8 — Boss: 25× Basic + 15× Fast + 10× Tank + 40× Swarm
-	[[S,0.0],[S,0.25],[S,0.25],[B,0.8],[S,0.25],[F,0.5],[S,0.25],[B,0.8],
-	 [T,1.0],[S,0.25],[F,0.5],[S,0.25],[B,0.8],[S,0.25],[F,0.5],[T,1.0],
-	 [S,0.25],[B,0.8],[S,0.25],[F,0.5],[S,0.25],[T,1.0],[B,0.8],[S,0.25],
-	 [F,0.5],[S,0.25],[T,1.0],[B,0.8],[S,0.25],[F,0.5],[S,0.25],[T,1.0],
-	 [B,0.8],[F,0.5],[S,0.25],[T,1.0],[B,0.8],[F,0.5],[S,0.25],[T,1.0],
-	 [B,0.8],[F,0.5],[S,0.25],[S,0.25],[T,1.0],[B,0.8],[F,0.5],[S,0.25],
-	 [S,0.25],[T,1.0],[B,0.8],[F,0.5],[S,0.25],[S,0.25],[B,0.8],[F,0.5],
-	 [S,0.25],[S,0.25],[B,0.8],[S,0.25],[F,0.5],[S,0.25],[B,0.8],[S,0.25],
-	 [T,1.0],[F,0.5],[B,0.8],[F,0.5],[T,1.0],[F,0.5],[B,0.8],[T,1.0],
-	 [F,0.5],[B,0.8],[T,1.0],[F,0.5],[B,0.8],[F,0.5],[B,0.8],[F,0.5],
-	 [B,0.8],[B,0.8],[B,0.8]],
-]
-
 
 func start_next_wave() -> void:
-	var wave_index := GameState.wave  # 0-based before advance
-	if wave_index >= WAVES.size():
+	var wave_index: int = GameState.wave   # 0-based index before advancing
+	if wave_index >= RunSeed.waves.size():
 		return
 	GameState.advance_wave()
-	_spawn_queue = WAVES[wave_index].duplicate()
+
+	var wave_def: Dictionary = RunSeed.waves[wave_index]
+	var hp_mult: float       = float(wave_def["hp_mult"])
+	var entries: Array       = wave_def["entries"]
+
+	# Expand spawn groups into a flat ordered spawn queue.
+	# Groups are interleaved so different enemy types arrive mixed together,
+	# giving a more interesting wave feel than dumping one type then the next.
+	_spawn_queue = _interleave_groups(entries, hp_mult)
 	_spawn_timer = 0.0
 	_alive_count = 0
 	_wave_active = true
@@ -84,24 +44,58 @@ func _process(delta: float) -> void:
 	if _spawn_queue.size() > 0:
 		_spawn_timer -= delta
 		if _spawn_timer <= 0.0:
-			var entry: Array = _spawn_queue.pop_front()
-			_spawn_enemy(entry[0] as EnemyData.Type)
-			_spawn_timer = float(_spawn_queue[0][1]) if _spawn_queue.size() > 0 else 0.0
+			var entry: Dictionary = _spawn_queue.pop_front()
+			_spawn_enemy(entry["data"] as EnemyData, entry["hp_mult"] as float)
+			# Load the NEXT entry's delay (not the just-spawned entry's delay).
+			# Each entry's "delay" means: wait this long before spawning THIS entry.
+			# After spawning, we prime the timer for the entry at the front of the queue.
+			_spawn_timer = float(_spawn_queue[0]["delay"]) if _spawn_queue.size() > 0 else 0.0
 
 	if _spawn_queue.is_empty() and _alive_count == 0:
 		_wave_active = false
-		var finished := GameState.wave
+		var finished: int = GameState.wave
 		wave_completed.emit(finished)
-		if finished >= WAVES.size():
+		if finished >= RunSeed.waves.size():
 			all_waves_completed.emit()
 
 
-func _spawn_enemy(type: EnemyData.Type) -> void:
+## Expand a list of spawn-group Dicts into a flat, interleaved spawn list.
+## Each group Dict: { "type": EnemyData, "count": int, "interval": float }
+## Returns Array of { "data": EnemyData, "delay": float, "hp_mult": float }
+func _interleave_groups(groups: Array, hp_mult: float) -> Array:
+	# Build per-group queues then round-robin them.
+	var queues: Array = []
+	for g: Dictionary in groups:
+		var q: Array = []
+		var enemy_data: EnemyData = g["type"]
+		var count: int            = int(g["count"])
+		var interval: float       = float(g["interval"])
+		for _i: int in count:
+			q.append({"data": enemy_data, "delay": interval, "hp_mult": hp_mult})
+		queues.append(q)
+
+	var flat: Array = []
+	var any_left := true
+	while any_left:
+		any_left = false
+		for q: Array in queues:
+			if q.size() > 0:
+				flat.append(q.pop_front())
+				any_left = true
+
+	# Entry 0 is triggered by the wave-start timer (which starts at 0.0), so its
+	# own delay field is never consumed.  Entries 1..N use their delay as the
+	# wait period *before* they spawn (read from the queue front after each pop).
+
+	return flat
+
+
+func _spawn_enemy(enemy_data: EnemyData, hp_mult: float) -> void:
 	if entities_parent == null or waypoints.is_empty():
 		return
 	var enemy := Enemy.new()
-	enemy.setup(waypoints, EnemyData.create(type))
-	# tree_exiting fires on queue_free() whether the enemy was killed or exited the map.
+	enemy.setup(waypoints, enemy_data, hp_mult)
+	# tree_exiting fires on queue_free() whether the enemy was killed or exited.
 	enemy.tree_exiting.connect(_on_enemy_removed)
 	entities_parent.add_child(enemy)
 	_alive_count += 1

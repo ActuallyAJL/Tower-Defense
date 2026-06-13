@@ -1,11 +1,14 @@
 extends CanvasLayer
 class_name HUD
 
-# Which tower type the player has selected (-1 = none).
-var selected_type: int = -1   # TowerData.Type value or -1
+## HUD: top bar (lives / wave / gold), bottom tower shop, game-over/win overlay.
+## The tower shop is built dynamically from RunSeed.tower_roster each run.
+
+## Index into RunSeed.tower_roster of the currently selected tower; -1 = none.
+var selected_index: int = -1
 
 signal start_wave_pressed
-signal tower_selected(type: int)
+signal tower_selected(index: int)
 
 const PANEL_BG   := Color(0.05, 0.05, 0.08, 0.88)
 const TEXT_WHITE := Color(1.0, 1.0, 1.0, 1.0)
@@ -14,6 +17,10 @@ const TEXT_RED   := Color(1.0, 0.28, 0.28, 1.0)
 const SEL_BORDER := Color(1.0, 0.90, 0.20, 1.0)
 const DIM_ALPHA  := 0.45
 
+# Minimum button width; shrinks if the roster is large.
+const BTN_MIN_W  : int = 100
+const BTN_HEIGHT : int = 70
+
 var _lives_label : Label
 var _wave_label  : Label
 var _gold_label  : Label
@@ -21,13 +28,6 @@ var _start_btn   : Button
 var _shop_btns   : Array[Button] = []
 var _overlay     : Panel
 var _overlay_lbl : Label
-
-const SHOP_DEFS: Array = [
-	["Basic",  "$50",  TowerData.Type.BASIC],
-	["Sniper", "$100", TowerData.Type.SNIPER],
-	["Slow",   "$75",  TowerData.Type.SLOW],
-	["Bomb",   "$120", TowerData.Type.BOMB],
-]
 
 
 func _ready() -> void:
@@ -60,7 +60,7 @@ func _build_top_bar() -> void:
 	_lives_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	hbox.add_child(_lives_label)
 
-	_wave_label = _make_label("Wave 0 / 8", TEXT_WHITE, 20)
+	_wave_label = _make_label("Wave 0 / ?", TEXT_WHITE, 20)
 	_wave_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hbox.add_child(_wave_label)
@@ -80,22 +80,28 @@ func _build_bottom_bar() -> void:
 
 	var hbox := HBoxContainer.new()
 	hbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	hbox.add_theme_constant_override("separation", 8)
+	hbox.add_theme_constant_override("separation", 4)
 	panel.add_child(hbox)
 
-	# Tower shop buttons
-	for i in SHOP_DEFS.size():
-		var def: Array = SHOP_DEFS[i]
+	# Dynamically build one button per tower in the run's roster.
+	var roster: Array[TowerData] = RunSeed.tower_roster
+	for i: int in roster.size():
+		var td: TowerData = roster[i]
 		var btn := Button.new()
-		btn.text = "%s\n%s" % [def[0], def[1]]
-		btn.custom_minimum_size = Vector2(120, 70)
+		btn.text = "%s\n$%d" % [td.tower_name, td.cost]
+		btn.custom_minimum_size = Vector2(BTN_MIN_W, BTN_HEIGHT)
 		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+		# Color the button text to match the element.
+		if td.element != null:
+			btn.add_theme_color_override("font_color", td.element.color.lightened(0.25))
+
 		var idx := i
 		btn.pressed.connect(func(): _on_shop_btn(idx))
 		hbox.add_child(btn)
 		_shop_btns.append(btn)
 
-	# Spacer
+	# Spacer pushes Start Wave button to the right.
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.add_child(spacer)
@@ -103,7 +109,7 @@ func _build_bottom_bar() -> void:
 	# Start Wave button
 	_start_btn = Button.new()
 	_start_btn.text = "▶  Start Wave"
-	_start_btn.custom_minimum_size = Vector2(160, 70)
+	_start_btn.custom_minimum_size = Vector2(160, BTN_HEIGHT)
 	_start_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_start_btn.pressed.connect(_on_start_wave)
 	hbox.add_child(_start_btn)
@@ -166,7 +172,7 @@ func on_wave_completed(_wave_num: int) -> void:
 
 
 func deselect_tower() -> void:
-	selected_type = -1
+	selected_index = -1
 	_update_shop_visuals()
 
 
@@ -175,13 +181,12 @@ func deselect_tower() -> void:
 # ---------------------------------------------------------------------------
 
 func _on_shop_btn(index: int) -> void:
-	var new_type: int = SHOP_DEFS[index][2]
-	if selected_type == new_type:
-		selected_type = -1   # toggle off
+	if selected_index == index:
+		selected_index = -1   # toggle off
 	else:
-		selected_type = new_type
+		selected_index = index
 	_update_shop_visuals()
-	tower_selected.emit(selected_type)
+	tower_selected.emit(selected_index)
 
 
 func _on_start_wave() -> void:
@@ -199,7 +204,7 @@ func _on_gold_changed(current: int) -> void:
 
 
 func _on_wave_changed(current: int) -> void:
-	_wave_label.text = "Wave %d / %d" % [current, WaveManager.WAVES.size()]
+	_wave_label.text = "Wave %d / %d" % [current, RunSeed.waves.size()]
 
 
 func _on_game_over() -> void:
@@ -221,14 +226,19 @@ func _on_game_won() -> void:
 # ---------------------------------------------------------------------------
 
 func _update_shop_visuals() -> void:
-	for i in _shop_btns.size():
-		var btn  : Button    = _shop_btns[i]
-		var cost : int       = TowerData.create(SHOP_DEFS[i][2]).cost
-		var can_afford       := GameState.gold >= cost
-		var is_selected      := selected_type == SHOP_DEFS[i][2]
+	var roster: Array[TowerData] = RunSeed.tower_roster
+	for i: int in _shop_btns.size():
+		var btn    : Button    = _shop_btns[i]
+		if i >= roster.size():
+			break
+		var td     : TowerData = roster[i]
+		var can_afford         := GameState.gold >= td.cost
+		var is_selected        := selected_index == i
 		btn.modulate.a = 1.0 if can_afford else DIM_ALPHA
 		if is_selected:
 			btn.add_theme_color_override("font_color", SEL_BORDER)
+		elif td.element != null:
+			btn.add_theme_color_override("font_color", td.element.color.lightened(0.25))
 		else:
 			btn.remove_theme_color_override("font_color")
 

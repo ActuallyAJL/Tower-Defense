@@ -12,10 +12,14 @@ var _wp_index   : int = 0
 var _slow_timer : float = 0.0
 var _slow_factor: float = 1.0
 
+# Elemental multipliers.
+const RESIST_MULT  : float = 0.50
+const WEAKNESS_MULT: float = 1.50
 
-func setup(waypoints: Array[Vector2], enemy_data: EnemyData) -> void:
+
+func setup(waypoints: Array[Vector2], enemy_data: EnemyData, hp_multiplier: float = 1.0) -> void:
 	data        = enemy_data
-	hp          = data.max_hp
+	hp          = data.max_hp * hp_multiplier
 	_waypoints  = waypoints
 	_wp_index   = 0
 	if _waypoints.size() > 0:
@@ -27,8 +31,20 @@ func apply_slow(factor: float, duration: float) -> void:
 	_slow_timer  = duration
 
 
-func take_damage(amount: float, pierce_armor: bool = false) -> void:
-	var effective := amount * (1.0 - data.armor) if not pierce_armor else amount
+## Apply damage to this enemy.
+## pierce_armor: bypasses the flat armor reduction.
+## damage_tag:   elemental tag of the projectile; compared against resistance/weakness.
+func take_damage(amount: float, pierce_armor: bool = false, damage_tag: String = "") -> void:
+	# Flat armor reduction (before elemental scaling).
+	var effective: float = amount * (1.0 - data.armor) if not pierce_armor else amount
+
+	# Elemental resistance / weakness.
+	if damage_tag != "":
+		if data.resistance_tag != "" and damage_tag == data.resistance_tag:
+			effective *= RESIST_MULT
+		elif data.weakness_tag != "" and damage_tag == data.weakness_tag:
+			effective *= WEAKNESS_MULT
+
 	hp = maxf(hp - effective, 0.0)
 	queue_redraw()
 	if hp == 0.0:
@@ -65,6 +81,11 @@ func _draw() -> void:
 
 	# Body
 	draw_rect(Rect2(-half, data.size), data.color)
+
+	# Elemental glow ring (shows element affinity).
+	if data.element != null:
+		draw_arc(Vector2.ZERO, data.size.x / 2.0 + 3.0, 0.0, TAU, 24,
+				 Color(data.element.color, 0.60), 2.0)
 
 	# Slow tint
 	if _slow_timer > 0.0:

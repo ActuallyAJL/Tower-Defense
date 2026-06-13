@@ -1,21 +1,35 @@
 extends Resource
 class_name EnemyData
 
+## Pure data resource for a single enemy type.
+## Procedural instances are created by EnemyGen.generate().
+## The legacy Type enum and create() factory are kept for reference.
+
 enum Type { BASIC, FAST, TANK, SWARM }
 
-var type         : Type
-var display_name : String
-var max_hp       : float
-var speed        : float
-var size         : Vector2
-var color        : Color
-var gold_reward  : int
-var armor        : float   # 0.0–1.0 flat damage reduction
+# Identity
+var type          : Type
+var display_name  : String
+var element       : ElementData   ## assigned element for this run (may be null)
+var resistance_tag: String        ## damage_tag this enemy resists (takes 50% damage)
+var weakness_tag  : String        ## damage_tag this enemy is weak to (takes 150% damage)
+
+# Stats
+var max_hp        : float
+var speed         : float
+var size          : Vector2
+var color         : Color
+var gold_reward   : int
+var armor         : float   # 0.0–1.0 flat damage reduction
 
 
+## Legacy factory — not called during procedural runs.
 static func create(t: Type) -> EnemyData:
 	var d := EnemyData.new()
-	d.type = t
+	d.type          = t
+	d.element       = null
+	d.resistance_tag = ""
+	d.weakness_tag   = ""
 	match t:
 		Type.BASIC:
 			d.display_name = "Basic"

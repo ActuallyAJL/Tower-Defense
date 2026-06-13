@@ -20,6 +20,11 @@ config/version="0.1.0"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 
+[autoload]
+
+RunSeed="*res://scripts/autoloads/run_seed.gd"
+GameState="*res://scripts/autoloads/game_state.gd"
+
 [display]
 
 window/size/viewport_width=1280
@@ -29,11 +34,6 @@ window/stretch/mode="canvas_items"
 [dotnet]
 
 project/assembly_name="Tower Defense"
-
-[autoload]
-
-RunSeed="*res://scripts/autoloads/run_seed.gd"
-GameState="*res://scripts/autoloads/game_state.gd"
 
 [rendering]
 

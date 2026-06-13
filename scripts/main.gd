@@ -24,7 +24,7 @@ var _occupied     : Dictionary = {}   # Vector2i → Tower
 
 func _ready() -> void:
 	GameState.reset()
-	RunSeed.start_run(randi())
+	RunSeed.start_run(randi())   # generates elements, towers, enemies, and waves
 
 	_center_grid()
 	_generate_map()
@@ -55,10 +55,10 @@ func _center_grid() -> void:
 
 func _generate_map() -> void:
 	_path_tiles = PathGenerator.generate(GRID_COLS, GRID_ROWS, RunSeed.rng)
-	for tile in _path_tiles:
+	for tile: Vector2i in _path_tiles:
 		_path_set[tile] = true
 	_waypoints.clear()
-	for tile in _path_tiles:
+	for tile: Vector2i in _path_tiles:
 		_waypoints.append(_tile_center(tile))
 	queue_redraw()
 
@@ -87,11 +87,12 @@ func _unhandled_input(event: InputEvent) -> void:
 # ---------------------------------------------------------------------------
 
 func _try_place_tower(tile: Vector2i) -> void:
-	if _hud.selected_type < 0:
+	var idx: int = _hud.selected_index
+	if idx < 0 or idx >= RunSeed.tower_roster.size():
 		return
 	if not _can_place(tile):
 		return
-	var data := TowerData.create(_hud.selected_type as TowerData.Type)
+	var data: TowerData = RunSeed.tower_roster[idx]
 	if not GameState.spend_gold(data.cost):
 		return
 	var tower := Tower.new()
@@ -109,9 +110,10 @@ func _can_place(tile: Vector2i) -> bool:
 		return false
 	if _occupied.has(tile):
 		return false
-	if _hud.selected_type < 0:
+	var idx: int = _hud.selected_index
+	if idx < 0 or idx >= RunSeed.tower_roster.size():
 		return false
-	return GameState.gold >= TowerData.create(_hud.selected_type as TowerData.Type).cost
+	return GameState.gold >= RunSeed.tower_roster[idx].cost
 
 
 # ---------------------------------------------------------------------------
@@ -125,8 +127,8 @@ func _draw() -> void:
 
 
 func _draw_grid() -> void:
-	for row in GRID_ROWS:
-		for col in GRID_COLS:
+	for row: int in GRID_ROWS:
+		for col: int in GRID_COLS:
 			var tile  := Vector2i(col, row)
 			var color := _tile_color(tile)
 			var rect  := Rect2(col * TILE_SIZE + 1, row * TILE_SIZE + 1,
@@ -149,7 +151,7 @@ func _draw_portals() -> void:
 
 
 func _draw_hover() -> void:
-	if _hud == null or _hud.selected_type < 0:
+	if _hud == null or _hud.selected_index < 0:
 		return
 	var tile := _world_to_tile(get_local_mouse_position())
 	if tile.x < 0 or tile.x >= GRID_COLS or tile.y < 0 or tile.y >= GRID_ROWS:

@@ -56,7 +56,8 @@ func _fire() -> void:
 		data.pierce_armor,
 		data.aoe_radius,
 		data.slow_amount,
-		data.slow_duration
+		data.slow_duration,
+		data.damage_tag
 	)
 	get_parent().add_child(proj)
 
@@ -70,6 +71,10 @@ func _draw() -> void:
 	draw_rect(Rect2(-half - Vector2(2, 2), BODY_SIZE + Vector2(4, 4)), data.color.darkened(0.35))
 	# Body
 	draw_rect(Rect2(-half, BODY_SIZE), data.color)
+
+	# Element indicator dot (top-right corner)
+	if data.element != null:
+		draw_circle(Vector2(half.x - 6.0, -half.y + 6.0), 5.0, data.element.color)
 
 	# Barrel
 	var barrel_tip := Vector2(BARREL_LEN, 0.0).rotated(_barrel_angle)
